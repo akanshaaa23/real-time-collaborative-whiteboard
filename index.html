@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrawMe ProMax — Real-Time Collaborative Whiteboard</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ==================== AUTH PAGE ==================== -->
+  <div id="page-auth" class="page active">
+    <div class="auth-bg">
+      <div class="auth-orb orb1"></div>
+      <div class="auth-orb orb2"></div>
+      <div class="auth-orb orb3"></div>
+    </div>
+    <div class="auth-container">
+      <div class="auth-logo">
+        <span class="logo-icon">✏️</span>
+        <h1>DrawMe <span class="accent">ProMax</span></h1>
+      </div>
+      <p class="auth-tagline">Real-time collaborative whiteboarding, reimagined.</p>
+
+      <div class="auth-tabs">
+        <button class="tab-btn active" data-tab="host">🎯 Host Meeting</button>
+        <button class="tab-btn" data-tab="join">🔗 Join Meeting</button>
+      </div>
+
+      <div id="tab-host" class="tab-content active">
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="host-name" placeholder="Enter your name..." maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label>Meeting Code (Auto-generated)</label>
+          <div class="code-display">
+            <span id="generated-code">---</span>
+            <button class="copy-btn" onclick="copyMeetingCode('generated-code')">📋 Copy</button>
+          </div>
+          <button class="generate-btn" onclick="generateCode()">🔄 Generate New Code</button>
+        </div>
+        <button class="btn-primary" onclick="hostMeeting()">🚀 Create & Host Meeting</button>
+      </div>
+
+      <div id="tab-join" class="tab-content">
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="join-name" placeholder="Enter your name..." maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label>Meeting Code</label>
+          <input type="text" id="join-code" placeholder="Enter meeting code..." maxlength="10" style="text-transform:uppercase;" />
+        </div>
+        <button class="btn-primary" onclick="joinMeeting()">🔗 Join Meeting</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LANDING PAGE ==================== -->
+  <div id="page-landing" class="page">
+    <div class="landing-bg">
+      <canvas id="landing-canvas"></canvas>
+    </div>
+    <div class="landing-content">
+      <div class="landing-badge">✨ Welcome, <span id="welcome-name">User</span></div>
+      <h1 class="landing-title">DrawMe <span class="accent">ProMax</span><br/>Whiteboard</h1>
+      <p class="landing-subtitle">Get Started with Our Smart Whiteboard</p>
+      <div class="landing-features">
+        <div class="feat-pill">🎙️ Voice Commands</div>
+        <div class="feat-pill">🤝 Real-time Sync</div>
+        <div class="feat-pill">🤖 Gesture Control</div>
+        <div class="feat-pill">💬 Live Chat</div>
+        <div class="feat-pill">📞 Voice Calls</div>
+      </div>
+      <div class="landing-info">
+        <div class="info-card">
+          <span class="info-icon">🎯</span>
+          <div>
+            <strong>Meeting ID</strong>
+            <span id="landing-meeting-id">---</span>
+          </div>
+        </div>
+        <div class="info-card">
+          <span class="info-icon">👑</span>
+          <div>
+            <strong>Role</strong>
+            <span id="landing-role">---</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn-get-started" onclick="goToWhiteboard()">
+        <span>Get Started</span>
+        <span class="btn-arrow">→</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== WHITEBOARD PAGE ==================== -->
+  <div id="page-whiteboard" class="page">
+
+    <!-- TOP BAR -->
+    <header class="top-bar">
+      <div class="top-left">
+        <div class="app-logo-small">✏️ DrawMe <span class="accent">ProMax</span></div>
+      </div>
+      <div class="top-center">
+        <div class="meeting-id-display">
+          <span class="mid-label">Meeting:</span>
+          <span id="wb-meeting-id" class="mid-value">---</span>
+          <button class="icon-btn" onclick="copyMeetingCode('wb-meeting-id')" title="Copy Meeting ID">📋</button>
+        </div>
+      </div>
+      <div class="top-right">
+        <button class="icon-btn" onclick="undoAction()" title="Undo">↩️</button>
+        <button class="icon-btn" onclick="redoAction()" title="Redo">↪️</button>
+        <button class="icon-btn" onclick="clearBoard()" title="Clear All">🗑️</button>
+        <button class="icon-btn" onclick="exportPNG()" title="Export PNG">📥</button>
+        <button class="icon-btn" id="import-btn" title="Import Image">📤</button>
+        <input type="file" id="import-file" accept="image/*,.svg,.pdf" style="display:none" onchange="importImage(event)" />
+        <button class="icon-btn" onclick="toggleDarkMode()" title="Dark Mode" id="dark-toggle">🌙</button>
+        <button class="icon-btn" onclick="toggleGrid()" title="Toggle Grid">⊞</button>
+        <button class="icon-btn" onclick="logoutUser()" title="Leave">🚪</button>
+      </div>
+    </header>
+
+    <!-- MAIN LAYOUT -->
+    <div class="wb-layout">
+
+      <!-- LEFT SIDEBAR: Users -->
+      <aside class="sidebar-left">
+        <div class="sidebar-section">
+          <h3 class="sidebar-title">👥 Active Users <span id="user-count" class="badge">1</span></h3>
+          <div id="users-list" class="users-list"></div>
+        </div>
+        <div class="sidebar-section">
+          <h3 class="sidebar-title">📋 Session Log</h3>
+          <div id="session-log" class="session-log"></div>
+        </div>
+      </aside>
+
+      <!-- CENTER: Canvas + Toolbar -->
+      <main class="canvas-area">
+
+        <!-- TOOL BAR -->
+        <div class="toolbar">
+          <div class="tool-group">
+            <button class="tool-btn active" data-tool="pencil" title="Pencil" onclick="setTool('pencil')">✏️</button>
+            <button class="tool-btn" data-tool="eraser" title="Eraser" onclick="setTool('eraser')">🧹</button>
+            <button class="tool-btn" data-tool="line" title="Line" onclick="setTool('line')">╱</button>
+            <button class="tool-btn" data-tool="rect" title="Rectangle" onclick="setTool('rect')">▭</button>
+            <button class="tool-btn" data-tool="circle" title="Circle" onclick="setTool('circle')">◯</button>
+            <button class="tool-btn" data-tool="fill" title="Fill" onclick="setTool('fill')">🪣</button>
+            <button class="tool-btn" data-tool="text" title="Text" onclick="setTool('text')">T</button>
+            <button class="tool-btn" data-tool="select" title="Select/Move" onclick="setTool('select')">🖱️</button>
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <label class="tool-label">Color</label>
+            <input type="color" id="color-picker" value="#000000" onchange="setColor(this.value)" title="Stroke Color" />
+            <input type="color" id="fill-color-picker" value="#ffffff" onchange="setFillColor(this.value)" title="Fill Color" />
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <label class="tool-label">Size</label>
+            <input type="range" id="stroke-size" min="1" max="50" value="3" oninput="setStrokeSize(this.value)" />
+            <span id="size-display">3px</span>
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <label class="tool-label">Brush</label>
+            <select id="brush-type" onchange="setBrushType(this.value)">
+              <option value="round">Round</option>
+              <option value="square">Square</option>
+              <option value="spray">Spray</option>
+              <option value="marker">Marker</option>
+            </select>
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <button class="tool-btn" onclick="addSticky()" title="Add Sticky Note">📝</button>
+            <button class="tool-btn" onclick="addEmoji()" title="Add Emoji">😊</button>
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <button class="tool-btn" onclick="openDiagramPicker()" title="Insert Diagram">📊</button>
+          </div>
+          <div class="tool-divider"></div>
+          <div class="tool-group">
+            <button class="tool-btn" onclick="zoomIn()" title="Zoom In">🔍+</button>
+            <span id="zoom-display">100%</span>
+            <button class="tool-btn" onclick="zoomOut()" title="Zoom Out">🔍-</button>
+          </div>
+        </div>
+
+        <!-- PAGE TABS BAR -->
+        <div class="page-tabs-bar">
+          <div id="page-tab-bar" class="page-tab-bar"></div>
+          <div class="page-tabs-actions">
+            <span id="page-counter" class="page-counter">1 / 1</span>
+            <button class="page-add-btn" onclick="addPage()" title="Add Page">＋ Page</button>
+          </div>
+        </div>
+
+        <!-- CANVAS WRAPPER -->
+        <div class="canvas-wrapper" id="canvas-wrapper">
+          <canvas id="main-canvas"></canvas>
+          <div id="stickies-container"></div>
+          <div id="emoji-container"></div>
+          <div id="gesture-cursor" class="gesture-cursor" style="display:none;">👆</div>
+        </div>
+      </main>
+
+      <!-- RIGHT SIDEBAR: Panels -->
+      <aside class="sidebar-right">
+        <div class="panel-tabs">
+          <button class="panel-tab" data-panel="voting" onclick="switchPanel('voting')">🗳️</button>
+          <button class="panel-tab active" data-panel="chat" onclick="switchPanel('chat')">💬</button>
+          <button class="panel-tab" data-panel="voice-cmd" onclick="switchPanel('voice-cmd')">🎙️</button>
+          <button class="panel-tab" data-panel="gesture" onclick="switchPanel('gesture')">🤖</button>
+          <button class="panel-tab" data-panel="call" onclick="switchPanel('call')">📞</button>
+        </div>
+
+        <!-- VOTING PANEL -->
+        <div id="panel-voting" class="panel-content">
+          <h3 class="panel-title">🗳️ Voting</h3>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <input type="text" id="vote-question" placeholder="Ask a question..."
+              style="padding:10px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-family:var(--font-body);" />
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="vote-option" placeholder="Add option..."
+                style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-tertiary);color:var(--text-primary);font-family:var(--font-body);" />
+              <button onclick="addVoteOption()"
+                style="padding:8px 14px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:700;">+</button>
+            </div>
+            <div id="vote-options-list" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;"></div>
+            <button onclick="startVoting()"
+              style="padding:10px;border-radius:8px;background:var(--success);color:#fff;border:none;cursor:pointer;font-weight:700;">🗳️ Start Vote</button>
+            <div id="voting-results" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+          </div>
+        </div>
+
+        <!-- CHAT PANEL -->
+        <div id="panel-chat" class="panel-content active">
+          <h3 class="panel-title">💬 Live Chat</h3>
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type a message..." onkeydown="chatKeydown(event)" />
+            <button onclick="sendChatMessage()">➤</button>
+          </div>
+        </div>
+
+        <!-- VOICE COMMAND PANEL -->
+        <div id="panel-voice-cmd" class="panel-content">
+          <h3 class="panel-title">🎙️ Voice Commands</h3>
+          <div class="voice-status" id="voice-status">
+            <div class="voice-indicator" id="voice-indicator"></div>
+            <span id="voice-status-text">Microphone off</span>
+          </div>
+          <button class="btn-voice" id="voice-toggle-btn" onclick="toggleVoice()">🎙️ Start Listening</button>
+          <div class="voice-transcript" id="voice-transcript">Waiting for command...</div>
+          <div class="voice-commands-list">
+            <h4>Available Commands:</h4>
+            <ul>
+              <li><code>draw star</code> → Draw a star</li>
+              <li><code>draw heart</code> → Draw a heart</li>
+              <li><code>draw tree</code> → Draw a tree</li>
+              <li><code>draw house</code> → Draw a house</li>
+              <li><code>draw car</code> → Draw a car</li>
+              <li><code>draw plane</code> → Draw an aeroplane</li>
+              <li><code>draw circle</code> / <code>rectangle</code> / <code>triangle</code></li>
+              <li><code>draw moon</code> / <code>sun</code> / <code>flower</code></li>
+              <li><code>draw cloud</code> / <code>rainbow</code> / <code>rocket</code></li>
+              <li><code>draw smiley</code> / <code>clock</code> / <code>crown</code></li>
+              <li><code>draw fish</code> / <code>butterfly</code> / <code>leaf</code></li>
+              <li><code>clear board</code> → Clear canvas</li>
+              <li><code>undo</code> / <code>redo</code></li>
+              <li><code>change color to red</code> → Set color</li>
+              <li><code>start drawing</code> → Enable pencil</li>
+              <li><code>add sticky note</code> → Add sticky</li>
+              <li><code>start call</code> / <code>end call</code></li>
+            </ul>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">💡 <b>Select tool:</b> Click shape to select, click again to <b>delete</b>. Right-click or Del key also deletes.</p>
+          </div>
+        </div>
+
+        <!-- GESTURE PANEL -->
+        <div id="panel-gesture" class="panel-content">
+          <h3 class="panel-title">🤖 Gesture Control</h3>
+          <div id="gesture-video-wrapper" class="gesture-video-wrapper">
+            <video id="gesture-video" autoplay playsinline muted></video>
+            <canvas id="gesture-canvas"></canvas>
+            <div id="gesture-overlay" class="gesture-overlay">Camera off</div>
+          </div>
+          <button class="btn-gesture" id="gesture-toggle-btn" onclick="toggleGesture()">📷 Start Camera</button>
+          <div id="gesture-detected" class="gesture-detected">No gesture</div>
+          <div class="gesture-guide">
+            <h4>Gestures:</h4>
+            <ul>
+              <li>☝️ Index finger → Draw</li>
+              <li>✊ Fist → Stop drawing</li>
+              <li>✌️ Two fingers → Eraser</li>
+              <li>🖐️ Open palm → Clear</li>
+              <li>👍 Thumb up → Undo</li>
+              <li>👎 Thumb down → Redo</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- VOICE CALL PANEL -->
+        <div id="panel-call" class="panel-content">
+          <h3 class="panel-title">📞 Voice Call</h3>
+          <div class="call-status" id="call-status-display">
+            <div class="call-icon">📞</div>
+            <span id="call-status-text">Not in call</span>
+          </div>
+          <div id="call-participants" class="call-participants"></div>
+          <div class="call-controls">
+            <button class="btn-call" id="join-call-btn" onclick="joinVoiceCall()">📞 Join Call</button>
+            <button class="btn-call btn-danger" id="leave-call-btn" onclick="leaveVoiceCall()" style="display:none;">📵 Leave Call</button>
+            <button class="btn-mute" id="mute-btn" onclick="toggleMute()" style="display:none;">🔇 Mute</button>
+          </div>
+          <div class="call-log" id="call-log"></div>
+        </div>
+
+      </aside>
+    </div>
+
+    <!-- BOTTOM BAR: Activity Timeline -->
+    <footer class="bottom-bar">
+      <div class="timeline-label">📜 Activity</div>
+      <div class="timeline-track" id="timeline-track"></div>
+    </footer>
+
+  </div><!-- end page-whiteboard -->
+
+  <!-- EMOJI PICKER MODAL -->
+  <div id="emoji-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h3>Pick an Emoji</h3>
+      <div class="emoji-grid" id="emoji-grid"></div>
+      <button onclick="closeEmojiModal()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- TEXT INPUT OVERLAY -->
+  <textarea id="text-input-overlay" class="text-input-overlay" style="display:none;" placeholder="Type here..."></textarea>
+
+  <script src="js/app.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/shapes.js"></script>
+  <script src="js/voice.js"></script>
+  <script src="js/gesture.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/call.js"></script>
+  <script src="js/stickies.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/realtime.js"></script>
+  <script src="js/pages.js"></script>
+  <script src="js/diagrams.js"></script>
+  <script>
+    (function() {
+      const orig = window.initWhiteboard;
+      window.initWhiteboard = function() {
+        orig();
+        if (typeof initShapeToolbar === 'function') initShapeToolbar();
+        if (typeof initCommandBar === 'function') initCommandBar();
+        if (typeof initPages === 'function') initPages();
+      };
+    })();
+  </script>
+</body>
+</html>
